@@ -1,30 +1,29 @@
 # 理解&优化 BLE 的吞吐量
 
-This article highlights the factors which control BLE throughput when using GATT and the knobs you will need to turn to maximize it. 
+这篇文章着重说明在使用 GATT 过程中控制 BLE 吞吐量的因素,  你会需要把它调到最大程度.
 
-When trying to learn about BLE throughput, I was frustrated by the lack of good notes on the topic ... so that is what this article sets out to do!
+当我试图去了解 BLE 的吞吐量时, 我因为缺少关于这个主题的文章而感到沮丧... 这就是我写这篇文章的目的!
 
-If you are trying to improve the throughput of your BLE application or just want to understand more about the BLE protocol stack in general, please read on!
+如果你正在试图去提高你的 BLE 应用的吞吐量, 或者仅仅为了了解更多关于 BLE 通用协议栈的内容, 请继续阅读!
 
 # 术语
 
-Before we get started there's a few basic definitions that are useful to know.
+在我们开始之前, 我们需要去了解一些基本的术语.
 
-* **连接事件** - For BLE, *exactly* two devices are talking with each other in one *connection*. Even if data is not being exchanged, each side must ping each other periodically to ensure the *connection* is still alive. Each time the devices ping one another is known as a *Connection Event*
-
-* **连接间隔** - The time between each *Connection Event* (valid time range is 7.5ms to 4 seconds). The *Connection Interval* can be negotiated once the two devices are connected. To optimize for power, it is often favorable to change the *Connection Interval* dynamically
+* **连接事件** - 对于 BLE, 两个设备在一次连接中彼此进行通讯. 即使没有数据交互, 彼此必须定期 ping 对方, 以确保*连接*仍然活着. 每一次设备之间的彼此 ping 对方的过程被称为*连接事件*
+* **连接间隔** - 每个*连接事件*之间的间隔时间(有效区间为7.5ms到4秒). 当两个设备连接好之后, *连接间隔*可以进行协商.为了优化功耗, 动态的改变*连接间隔*通常是有效的.
 
 # 理解 LE 包层
 
-To optimize throughput, it is first important to look at the makeup of a Bluetooth LE packet.
+为了优化吞吐量, 第一件事就是要查看蓝牙的 LE 包的组成.
 
 ## 蓝牙 基带 / 无线电
 
-The BLE Radio is capable of transmitting 1 symbol per μs (giving it a bitrate of 1 megabit/second). This is **not** the throughput which will be observed for several reasons:
+蓝牙无线电每微秒能传输一个符号(比特率为1兆/秒), 然而这并不是真正的吞吐量, 原因如下:
 
-1. There is a mandatory *150μs* delay that must be between each packet sent (known as the *Inter Frame Space (T_IFS)*)
-2. BLE is a *reliable transport* meaning every packet of data sent from one side must be acknowledged (ACK'd) by the other. The size of an *ACK* packet is *80bits* and thus takes *80μs* to transmit.
-3. The maximum data packet is 41 bytes (*328 bits*) and thus takes 328μs to transmit.
+1. 在每个发送的数据包之间必须有一个强制性的*150μs* *延迟(称为*帧空间(T_IFS))
+2. BLE 是一种*可靠性传输*, 意味着从一方发送的每个数据包都必须被另一方确认(ACK).一个 ACK 包的大小是80 bits, 因此需要 *80μs* 来传输.
+3. 最大的数据包为 41bytes(328 bits), 因此需要 328μs 来传输.
 
 ### 数据交换示例
 
@@ -33,41 +32,41 @@ The BLE Radio is capable of transmitting 1 symbol per μs (giving it a bitrate o
 
 ## 链路层包(LL)
 
-This is the format used for data sent over the air. All higher level messages are packed within *Data Payloads* of *LL Packets*. Below is what a LL Packet looks like:
+这是通过空中发送数据使用的格式.所有更高级别的消息被打包在*数据有效负载* 的 *LL 包* 中 . 下面是 LL 包的格式:
 
 ![Data exchange](ble_throughput_pics/ll_packet.png)
 
 ### 最大的LL数据有效负载吞吐量
 
-The exchange of one packet of data involves:
+交换一个数据包涉及:
 
-* Side A sends a maximum size LL data packet (*27* bytes of data)
-* Side B receieves the packet and waits T_IFS (*150μs*)
-* Side B sends an ACK LL packet (*0* bytes of data)
-* Side A waits T_IFS and then can stop sending or transmit more data
+* A 端发送一个最大的LL数据包(27 bytes大小的数据)
+* B 端接受这个LL数据包并等待 T_IFS (*150μs*)
+* B 端发送一个 ACK LL 包(0 bytes 大小)
+* A 端等待 T_IFS 然后可以停止发送或传输更多的数据
 
-Based on the discussion above, the time this sequence takes can be computed:
+根据上面的讨论，可以计算出该序列所花费的时间:
 
 `328μs data packet + 150μs T_IFS + 80μs ACK + 150μs T_IFS = 708μs`
 
-During this time period, 27 bytes of actual data can be transmitted which takes 216μs.
+在此期间，实际数据可传输27字节，用时216μs。
 
-This yields a data throughput of:
+这产生一个数据吞吐量:
 
 `(216μs / 708μs) * 1Mbit/sec = 305,084 bits/second = 38.1kBytes/s`
 
 ## L2CAP 通道&有效载荷
 
-L2CAP is the higher level protocol packed inside the **Data Payloads** of the LL packets. L2CAP allows:
+L2CAP 是更高级的协议，封装在LL包的**数据有效负载**中。L2CAP 允许:
 
-* unrelated data flows to be multiplexed across different virtual *channels* 
-* fragmenting and de-fragmenting data across multiple LL Packets (since an L2CAP payload can span multiple LL Packets)
+* 在不同的虚拟通道上复用不相关的数据流
+* 跨多个LL包分段和反分段数据(因为一个L2CAP有效负载可以跨多个LL包)
 
-There are only a few different L2CAP channels used for LE:
+只有几个不同的 L2CAP 频道用于 LE:
 
-1. **Security Manager protocol (SMP)** - for BLE security setup
-2. **Attribute protocol (ATT)** - Android & iOS both offer APIs that allow 3rd party apps to control transfers over this channel. 
-3. **LE L2CAP Connection Oriented Channels** - Custom channels which could be very advantageous for streaming applications. However, there are not 3rd party APIs for this on mobile platforms today so it's not very useful in practice today
+1. **安全管理器协议(SMP)** -用于BLE安全设置
+2. **属性协议(ATT)** - Android和iOS都提供api，允许第三方应用程序通过该通道控制传输。
+3. **LE L2CAP面向连接的通道** - 自定义通道，对流媒体应用程序非常有利。然而，目前在移动平台上还没有第三方api，所以它在实践中并不是很有用.
 
 ### L2CAP 包
 
@@ -75,7 +74,7 @@ There are only a few different L2CAP channels used for LE:
 
 ## 属性协议(ATT)包
 
-In the *L2CAP Information Payload* we have the ATT packet. This is the packet structure the *GATT* protocol which BLE devices use to exchange data with each other. The packet looks like this:
+在 *L2CAP 信息负载* 中我们有 ATT 包. 这个包的结构是*GATT*协议的封装，BLE设备使用它来彼此交换数据. 它看起阿里是这样的:
 
 ![Data exchange](ble_throughput_pics/att_packet.png)
 
