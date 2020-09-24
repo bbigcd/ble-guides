@@ -1,4 +1,4 @@
-# Understanding & Optimizing BLE Throughput
+# 理解&优化 BLE 的吞吐量
 
 This article highlights the factors which control BLE throughput when using GATT and the knobs you will need to turn to maximize it. 
 
@@ -6,19 +6,19 @@ When trying to learn about BLE throughput, I was frustrated by the lack of good 
 
 If you are trying to improve the throughput of your BLE application or just want to understand more about the BLE protocol stack in general, please read on!
 
-# Terminology
+# 术语
 
 Before we get started there's a few basic definitions that are useful to know.
 
-* **Connection Event** - For BLE, *exactly* two devices are talking with each other in one *connection*. Even if data is not being exchanged, each side must ping each other periodically to ensure the *connection* is still alive. Each time the devices ping one another is known as a *Connection Event*
+* **连接事件** - For BLE, *exactly* two devices are talking with each other in one *connection*. Even if data is not being exchanged, each side must ping each other periodically to ensure the *connection* is still alive. Each time the devices ping one another is known as a *Connection Event*
 
-* **Connection Interval** - The time between each *Connection Event* (valid time range is 7.5ms to 4 seconds). The *Connection Interval* can be negotiated once the two devices are connected. To optimize for power, it is often favorable to change the *Connection Interval* dynamically
+* **连接间隔** - The time between each *Connection Event* (valid time range is 7.5ms to 4 seconds). The *Connection Interval* can be negotiated once the two devices are connected. To optimize for power, it is often favorable to change the *Connection Interval* dynamically
 
-# Understanding The LE Packet Layers
+# 理解 LE 包层
 
 To optimize throughput, it is first important to look at the makeup of a Bluetooth LE packet.
 
-## Bluetooth Baseband / Radio
+## 蓝牙 基带 / 无线电
 
 The BLE Radio is capable of transmitting 1 symbol per μs (giving it a bitrate of 1 megabit/second). This is **not** the throughput which will be observed for several reasons:
 
@@ -26,18 +26,18 @@ The BLE Radio is capable of transmitting 1 symbol per μs (giving it a bitrate o
 2. BLE is a *reliable transport* meaning every packet of data sent from one side must be acknowledged (ACK'd) by the other. The size of an *ACK* packet is *80bits* and thus takes *80μs* to transmit.
 3. The maximum data packet is 41 bytes (*328 bits*) and thus takes 328μs to transmit.
 
-### An example data exchange
+### 数据交换示例
 
 ![Data exchange](ble_throughput_pics/connection_event.png)
 
 
-## The Link Layer (LL) Packet
+## 链路层包(LL)
 
 This is the format used for data sent over the air. All higher level messages are packed within *Data Payloads* of *LL Packets*. Below is what a LL Packet looks like:
 
 ![Data exchange](ble_throughput_pics/ll_packet.png)
 
-### Maximum LL Data Payload Throughput
+### 最大的LL数据有效负载吞吐量
 
 The exchange of one packet of data involves:
 
@@ -56,7 +56,7 @@ This yields a data throughput of:
 
 `(216μs / 708μs) * 1Mbit/sec = 305,084 bits/second = 38.1kBytes/s`
 
-## L2CAP Channels & Payloads
+## L2CAP 通道&有效载荷
 
 L2CAP is the higher level protocol packed inside the **Data Payloads** of the LL packets. L2CAP allows:
 
@@ -69,30 +69,30 @@ There are only a few different L2CAP channels used for LE:
 2. **Attribute protocol (ATT)** - Android & iOS both offer APIs that allow 3rd party apps to control transfers over this channel. 
 3. **LE L2CAP Connection Oriented Channels** - Custom channels which could be very advantageous for streaming applications. However, there are not 3rd party APIs for this on mobile platforms today so it's not very useful in practice today
 
-### The L2CAP Packet
+### L2CAP 包
 
 ![Data exchange](ble_throughput_pics/l2cap_packet.png)
 
-## Attribute Protocol (ATT) Packet
+## 属性协议(ATT)包
 
 In the *L2CAP Information Payload* we have the ATT packet. This is the packet structure the *GATT* protocol which BLE devices use to exchange data with each other. The packet looks like this:
 
 ![Data exchange](ble_throughput_pics/att_packet.png)
 
-### Maximum throughput over GATT
+### GATT 协议最高吞吐量
 
 The Attribute Protocol *Handle Value Notification* is the best way for a server to stream data to a client. The *Opcode Overhead* for this operation is 2 bytes. That means there is 3 bytes of ATT packet overhead and 4 bytes of L2CAP overhead for each ATT payload. We can determine the max ATT throughput by taking the max LL throughput and multiplying it by the efficiency of the ATT packet:
 
 `ATT Throughput = LL throughput * ((MTU Size - ATT Overhead) / (L2CAP overhead + MTU Size))`
 
-#### Max throughput achievable by ATT MTU size
+#### 按 ATT MTU 大小可实现的最大吞吐量
 MTU size (bytes)         | Throughput (kBytes/sec) |
 -------------            | -------------           |
 23 (default)             |  28.2                   |
 185 (iOS 10 max)         |  36.7                   |
 512 (bluetooth max)      |  37.6                   |
 
-### Realistic throughput over GATT
+### GATT 的实际吞吐量
 
 In practice, the achievable throughput rates are further restricted by the devices being used. Some common limiting factors are:
 

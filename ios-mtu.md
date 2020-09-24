@@ -1,25 +1,25 @@
-# Reverse Engineering reasoning for iOS BLE MTU sizes
+# iOS BLE MTU sizes 逆向工程推理 
 
-Starting with iOS10, the ATT MTU size negotiated is 185 bytes. Prior to that it was 158 bytes. While these numbers may initially seem random, read on to understand how they are actually quite clever!
+从 iOS10 开始, ATT MTU 的协商大小是 185 字节, 之前是 158 字节. 虽然这些数字可能一开始看起来是随机的，但继续读下去，你就会明白它们实际上是多么聪明!
 
-# Factors to consider when negotiating the ATT MTU size
+# 协商 ATT MTU 大小时要考虑的因素
 
-Different BLE devices support different ATT MTU sizes. Larger MTU sizes reduce the relative packet overhead and help achieve better [throughput](https://github.com/chrisc11/ble-guides/blob/master/ble-throughput.md)
+不同的 BLE 设备支持不同的 ATT MTU 大小. 较大的 MTU 大小减少了相对的数据包开销，有助于获得更高的[吞吐量](https://github.com/bbigcd/ble-guides/blob/master/ble-throughput.md)
 
-However, there are additional factors one should also take into account when negotiating an MTU size:
+然而, 在协商 MTU 大小时，还应该考虑其他一些因素:
 
-* **Minimizing Latency** - When using BLE, data transfers start at sync points called *connection events* The amount of data a given BLE device can send during a *connection event* is vendor specific. It's possible with a large MTU size it may take multiple connection events to transmit one MTU worth of data. Depending on the frequency of the *connection events* (7.5ms - 4s), this could mean there is a considerable lag before all the data for one MTU is received by the peer device
-* **Optimal Packing** - ATT messages are traveling over *Link Layer (LL)* packets. LL packets can hold a maximum data payload of 27 bytes. Ideally, one would want to select an MTU size such that the data fits perfectly across these 27 byte data payloads. Otherwise, some throughput is being sacrificed because the final LL packet has more overhead due to the smaller data field.
+* **最小延迟** - 当使用 BLE 时, 数据传输从称为*连接事件*的同步点开始, 在一个*连接事件*期间, 给定的 BLE 设备可以发送的数据量是取决于供应商的. 对于大型 MTU，可能需要多个连接事件来传输一个MTU值的数据。根据*连接事件*的频率(7.5ms - 4), 这可能意味着在对等设备接收到一个MTU的所有数据之前有相当大的延迟
+* **最优装包** - ATT 消息在链路层(LL)包上传输. LL 包可以保持27字节的最大数据有效载荷. 在理想情况下, 我们希望选择一个 MTU 大小, 以便数据能够完美的匹配这些27字节的数据有效负载. 否则, 会牺牲一些吞吐量, 因为由于数据字段较小, 最终的LL包会有更多的开销.
 
-# So why does iOS10 use 185 byte MTU?!
+# 为什么 iOS10 使用 185 byte MTU?!
 
-As you may recall, when transmitting an ATT MTU worth of data, there is a L2CAP header within the LL data payload that takes up 4 bytes. Thus, transferring a 185 byte ATT MTU will require 189 bytes worth of link layer payload. This means we need `189/27 = 7` LL packets. 
+你可以能会记得, 当传输一个 ATT MTU 值的数据时，在LL数据有效载荷中有一个占用4字节的 L2CAP 报头. 因此, 传输一个185字节的 ATT MTU 将需要189字节的链路层有效负载. 这意味着我们需要 `189/27 = 7` LL 包.
 
-If you airtrace an iOS10 device, you will find the maximum number of packets sent during a *connection event* will be 7!
+如果你 airtrace 的是一个 iOS 10 的设备, 你会发现在*连接事件*期间发送的数据包的最大数量将是7!
 
-If you run the same analysis for the older iOS MTU size of 158, you will find that the result is exactly 6 LL packets. An airtrace will also confirm this is the maximum number of packets sent during a *connection event*
+如果你对低于 iOS 10对旧设备MTU 大小为 158 运行同样的分析, 您将发现结果正好是6个LL包。airtrace还会确认这是*连接事件*期间发送的数据包的最大数量
 
 
-# What about Android?
+# 关于 Android?
 
-Android lets a user perform an MTU exchange up to 512 bytes (even though many Android phones only support 23 byte MTUs :smile:). It's up to the developer to consider what an optimal MTU size may be for their given use case.
+Android 允许用户执行最多512字节的 MTU 交换(即使许多 Android 手机只支持23字节 MTU :smile:)。对于给定的用例，应该由开发人员来考虑最佳的 MTU 大小。
