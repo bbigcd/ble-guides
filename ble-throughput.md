@@ -80,7 +80,7 @@ L2CAP 是更高级的协议，封装在LL包的**数据有效负载**中。L2CAP
 
 ### GATT 协议最高吞吐量
 
-The Attribute Protocol *Handle Value Notification* is the best way for a server to stream data to a client. The *Opcode Overhead* for this operation is 2 bytes. That means there is 3 bytes of ATT packet overhead and 4 bytes of L2CAP overhead for each ATT payload. We can determine the max ATT throughput by taking the max LL throughput and multiplying it by the efficiency of the ATT packet:
+属性协议处理值通知是服务端向客户端传送数据的最佳方式.这个操作的操作码开销是 2 字节. 这意味着每个 ATT 有效载荷有3个字节的 ATT 数据包开销和4个字节的 L2CAP 开销. 我们可以通过取最大 LL 吞吐量并将其乘以ATT数据包的效率来确定最大 ATT 吞吐量:
 
 `ATT Throughput = LL throughput * ((MTU Size - ATT Overhead) / (L2CAP overhead + MTU Size))`
 
@@ -93,47 +93,52 @@ MTU size (bytes)         | Throughput (kBytes/sec) |
 
 ### GATT 的实际吞吐量
 
-In practice, the achievable throughput rates are further restricted by the devices being used. Some common limiting factors are:
+在实践中, 可以实现的吞吐量进一步受到所使用的设备的限制. 一些常见的因素有:
 
-* The number of packets which can be transmitted in one *connection event*. An entire *connection event* could be filled with data but many devices will only transmit several packets per event.
-* For devices which will only send a few packets per *connection event*, it then becomes important to try and make the *connection interval* very short so data can be sent often. However, devices will often only support a portion of the 7.5ms - 4s range.
-* Max MTU size supported by the device (many BT chips in Android devices drop data when the size is greater than the default of 23)
-* BT LE, BT Classic & Wifi share the same antenna / chip / scheduler and so bursts of wifi/classic traffic can reduce how many packets of LE data will be sent per *connection event*
+* 在一次*连接事件*中可以传输的数据包的数量. 一个完整的连接事件可以被数据填充，但是很多设备每个事件只传输几个数据包。
+* 对于每*连接事件*只发送几个包的设备，它们尝试将*连接间隔*变得非常短，以便经常发送数据. 然而，设备通常只支持7.5ms - 4s范围的一部分。
+* 设备支持的最大 MTU 大小(Android 设备中很多 BT 芯片在大于默认值23时会删除数据)
+* BT LE, BT Classic和Wifi使用相同的天线 / 芯片 / 调度器, 因此, wifi/经典流量的爆发可以减少每个*连接事件*发送的 LE 数据包的数量
 
 Below I'll walk through two practical phone examples and their peak *GATT* throughput. Do note that often a developer will add another protocol on top of *GATT* to stream data. The scheme chosen can also have a significant impact on the throughput.
 
-#### Example 1 - iOS 10 / iPhoneSE
+下面我将通过两个实际的手机来展示他们的最大吞吐量。请注意，通常开发人员会在 *GATT* 层之上的协议来进行流数据通信. 选择的方案也会对吞吐量产生重大影响.
 
-##### Background
-For iOS < 10, ~4-6 packets are transmitted per connection interval and the max MTU size supported is 158 bytes. For iOS 10, many iOS devices now support 185 byte MTU and 7 packets per connection interval.
+#### 例子 1 - iOS 10 / iPhoneSE
 
-When you connect to a BLE device with iOS, it will start with a *connection interval* of 30ms (or 11.25ms if the device supports HID over GATT). However, it is possible to negotiate the interval down to 15ms once connected. Do note that depending on how many packets a device is capable of transmitting, a lower connection interval may not impact performance because the device could fill all the space in a larger *connection interval* with packets.
+##### 背景
+对于小于 iOS10 的设备, 每个连接间隔传输约4~6个数据包, 支持的最大MTU大小为158字节. 对于 iOS10 以上的设备, 现在支持 185 字节的 MTU 和每个连接间隔传输7个数据包.
 
-##### Achievable Throughput
-The following assumes a 15ms conn interval, 185 byte ATT MTU size and that 7 Data packets and be transmitted and acknowledged per *connection interval*
+当你使用 iOS 连接一个 BLE 设备, 它将以 30 ms 的连接间隔开始(如果设备支持 HID over GATT, 这个值会是: 11.25 ms). 然而, 一但连接, 它可能会协商到15ms的间隔. 请注意, 根据设备能够传输的数据包的数量, 较低的连接间隔可能并不会影响性能, 因为设备可以用数据包在更大的*连接间隔*中填满所有空间.
+
+##### 最大吞吐量
+下面连接间隔为15毫秒, ATT MTU 大小为 185 字节, 每个*连接间隔*被传输和确认的7个数据包
 
 First let's make sure we can transmit 7 packets in 15ms:
+
+首先, 让我们确保我们能在 15 毫秒内传输7 个数据包:
+
 ` 7 * (328μs Data + 150μs + 80μs ACK + 150μs) = 4.956ms`
 
-Now that we know the packets fit, we can take the duty cycle we are achieving and multiply it by the ATT throughput maximums tabulated above.
+现在我们知道数据包是合适的, 我们可以用我们正在实现的占空比乘以上面表中 ATT 吞吐量的最大值。
 
 `Data Rate = (4.956ms / 15ms) * 36.7 kBytes/Sec = 12.2 kBytes/sec`
 
-#### Example 2 - Nexus 5x
+#### 例子 2 - Nexus 5x
 
-The Nexus 5x has one of the better performing BLE chips I've seen to date. It is willing to fill an entire *Connection Event* with packets and supports an MTU size of 512 bytes. With a connection interval of 15ms, I've seen as many as 21 packets transmitted. This takes:
+迄今为止, Nexus 5x 是我见过拥有性能最好的BLE芯片之一. 它会用数据包填充整个*连接间隔*事件, 并支持512字节的 MTU 大小. 在 15ms 的连接间隔, 我甚至看到传输了多达21个数据包. 这需要:
 
 `21 * (328μs Data + 150μs + 80μs ACK + 150μs) = 14.868ms`
 
-Unfortunately, this seems a bit too overzealous and the chip often skips transmitting any data for the following connection event effectively halving the duty cycle. This still yields a pretty impressive throughput:
+不过, 这似乎太疯狂了, 芯片经常在随后的连接事件中跳过传输任何数据, 从而有效的将占空比减半. 不过, 这仍然产生了令人意想不到的吞吐量:
 
 `Data Rate = (14.868ms / 30ms) * 37.6 kBytes/sec = 18.6 kBytes/sec`
 
-*Full disclosure:* The Android BLE ecosystem is *very* diverse and while some devices perform quite well, others devices perform very poorly. I've even seen some Android devices only capable of transmitting 1 packet per connection interval!
+*全面披露*: Android BLE生态系统*非常*多样化，虽然有些设备性能很好，但有些设备性能却很差。我什至看到有些 Android 设备每个连接间隔只能发送1个数据包！
 
+# 其他主题...即将推出
 
-# Additional Topics ... coming soon
+* 蓝牙 4.2 数据包长度扩展(从BT 4.2开始，LL数据包数据有效载荷最多可协商255个字节！)
+* 查看哪个设备闲置了吞吐量
+* 处理手机和供应商中BLE bugs (大量)
 
-* Bluetooth 4.2 Packet Length Extension (As of BT 4.2, LL packet data payload can be negotiated up to 255 bytes!)
-* Auditing what device is limiting throughput
-* Dealing with (numerous) BLE bugs in the mobile phone & vendor stacks
